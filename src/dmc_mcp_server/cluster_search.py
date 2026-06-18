@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 CLUSTER_API = "https://cynosdb.cloud.tencent.com/api/cloud3/cynosdb/DescribeClusters"
+MC_GTK = 1625965900
 DEFAULT_REGION = "ap-shanghai"
 DEFAULT_LIMIT = 100
 
@@ -34,6 +35,7 @@ def search_cluster_by_ip(cookie: str, ip: str, region: str = DEFAULT_REGION) -> 
             }
         ],
         "Region": region,
+        "mc_gtk": MC_GTK,
     }
 
     with httpx.Client(trust_env=False, timeout=15) as client:

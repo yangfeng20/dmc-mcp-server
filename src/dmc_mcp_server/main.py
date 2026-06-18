@@ -296,7 +296,7 @@ def list_active_sessions() -> str:
 def find_instance_by_ip(ip: str) -> str:
     """
     Find a TDSQL-C cluster by its internal Vip (database proxy IP).
-    Uses the Tencent Cloud console DescribeClusters API with the same cookie.
+    Fetches all clusters via DescribeClusters API and matches by Vip / NetAddrs.
 
     Typical workflow:
       1. Read the JDBC URL from your-config.properties (e.g. 10.0.0.1:3306)
@@ -313,22 +313,12 @@ def find_instance_by_ip(ip: str) -> str:
     try:
         from .cluster_search import search_cluster_by_ip
     except ImportError:
-        return (
-            "Cluster search module not available. "
-            "Use Chrome DevTools MCP to search in the console page instead: "
-            "navigate to https://console.cloud.tencent.com/cynosdb/mysql/ap-shanghai/cluster, "
-            f"enter '{ip}' in the search box with the 'DB Proxy IP' filter tag."
-        )
+        return "Cluster search module not available."
 
     cookie = _cookie_mgr.cookie
     results = search_cluster_by_ip(cookie, ip)
     if not results:
-        return (
-            f"No cluster found with Vip '{ip}'.\n"
-            "Tip: Use Chrome DevTools MCP to verify in the console:\n"
-            "  1. Navigate to the TDSQL-C cluster list page\n"
-            f"  2. Search with 'DB Proxy IP' filter for '{ip}'"
-        )
+        return f"No cluster found with Vip '{ip}'."
 
     lines = [f"Found {len(results)} cluster(s) matching Vip '{ip}':"]
     for c in results:

@@ -292,6 +292,55 @@ def list_active_sessions() -> str:
     return "\n".join(lines)
 
 
+@mcp.tool()
+def find_instance_by_ip(ip: str) -> str:
+    """
+    Find a TDSQL-C cluster by its internal Vip (database proxy IP).
+    Uses the Tencent Cloud console DescribeClusters API with the same cookie.
+
+    Typical workflow:
+      1. Read the JDBC URL from your-config.properties (e.g. 10.0.0.1:3306)
+      2. Call find_instance_by_ip("10.0.0.1") to get the ClusterId
+      3. Call login_instance with the ClusterId
+      4. Call execute_select
+
+    Args:
+        ip: Internal Vip address, e.g. "10.0.0.1"
+
+    Returns:
+        Matching cluster info (ClusterId, ClusterName, Vip, NetAddrs) or "not found".
+    """
+    try:
+        from .cluster_search import search_cluster_by_ip
+    except ImportError:
+        return (
+            "Cluster search module not available. "
+            "Use Chrome DevTools MCP to search in the console page instead: "
+            "navigate to https://console.cloud.tencent.com/cynosdb/mysql/ap-shanghai/cluster, "
+            f"enter '{ip}' in the search box with the 'DB Proxy IP' filter tag."
+        )
+
+    cookie = _cookie_mgr.cookie
+    results = search_cluster_by_ip(cookie, ip)
+    if not results:
+        return (
+            f"No cluster found with Vip '{ip}'.\n"
+            "Tip: Use Chrome DevTools MCP to verify in the console:\n"
+            "  1. Navigate to the TDSQL-C cluster list page\n"
+            f"  2. Search with 'DB Proxy IP' filter for '{ip}'"
+        )
+
+    lines = [f"Found {len(results)} cluster(s) matching Vip '{ip}':"]
+    for c in results:
+        lines.append(f"  ClusterId: {c['ClusterId']}")
+        lines.append(f"  ClusterName: {c['ClusterName']}")
+        lines.append(f"  Vip: {c.get('Vip', 'N/A')}")
+        for addr in c.get("NetAddrs", []):
+            lines.append(f"    - {addr['NetType']}: {addr['Vip']}:{addr.get('Vport', 3306)}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def main():
     _cookie_mgr.load_from_env()
     mcp.run()

@@ -103,15 +103,19 @@ def login_instance(
     region_id: int = 4,
 ) -> str:
     """
-    Login to a TDSQL-C / CDB instance via Tencent Cloud DMC.
+    Login to a database instance via Tencent Cloud DMC.
+    Supports both TDSQL-C (CynosDB) and TDSQL (DCDB) instances.
     The session is cached - subsequent calls reuse the same token
     without re-login, unless the token expires.
 
+    Use find_instance_by_ip to discover the instance_id and db_type,
+    then pass the db_type value from the search results here.
+
     Args:
-        instance_id: Instance ID, e.g. "cynosdbmysql-xxxxxxxx"
+        instance_id: Instance ID, e.g. "cynosdbmysql-xxx" or "tdsqlshard-xxx"
         user: Database account name, e.g. "db_user"
         password: Database account password (plain text)
-        db_type: Database type, default "cynosdbmysql"
+        db_type: Database type - "cynosdbmysql" (TDSQL-C) or "tdsql" (TDSQL)
         region_id: Region ID, default 4 (Shanghai)
 
     Returns:
@@ -304,39 +308,43 @@ def list_active_sessions() -> str:
 @mcp.tool()
 def find_instance_by_ip(ip: str) -> str:
     """
-    Find a TDSQL-C cluster by its internal Vip (database proxy IP).
-    Fetches all clusters via DescribeClusters API and matches by Vip / NetAddrs.
+    Find a database instance by its internal Vip (proxy IP).
+    Searches both TDSQL-C (CynosDB) and TDSQL (DCDB) instances.
 
     Typical workflow:
-      1. Read the JDBC URL from your-config.properties (e.g. 10.0.0.1:3306)
-      2. Call find_instance_by_ip("10.0.0.1") to get the ClusterId
-      3. Call login_instance with the ClusterId
+      1. Read the JDBC URL from your-config.properties (e.g. 10.0.0.2:3306)
+      2. Call find_instance_by_ip("10.0.0.2") to get the InstanceId
+      3. Call login_instance with the InstanceId (use the DbType from results)
       4. Call execute_select
 
     Args:
-        ip: Internal Vip address, e.g. "10.0.0.1"
+        ip: Internal Vip address, e.g. "10.0.0.2"
 
     Returns:
-        Matching cluster info (ClusterId, ClusterName, Vip, NetAddrs) or "not found".
+        Matching instance info (InstanceId, Name, Vip, DbType) or "not found".
     """
     try:
-        from .cluster_search import search_cluster_by_ip
+        from .cluster_search import search_all_by_ip
     except ImportError:
         return "Cluster search module not available."
 
     cookie = _cookie_mgr.cookie
     mc_gtk = _cookie_mgr.mc_gtk
-    results = search_cluster_by_ip(cookie, ip, mc_gtk=mc_gtk)
+    results = search_all_by_ip(cookie, ip, mc_gtk=mc_gtk)
     if not results:
-        return f"No cluster found with Vip '{ip}'."
+        return f"No instance found with Vip '{ip}' in either TDSQL-C or TDSQL."
 
-    lines = [f"Found {len(results)} cluster(s) matching Vip '{ip}':"]
-    for c in results:
-        lines.append(f"  ClusterId: {c['ClusterId']}")
-        lines.append(f"  ClusterName: {c['ClusterName']}")
-        lines.append(f"  Vip: {c.get('Vip', 'N/A')}")
-        for addr in c.get("NetAddrs", []):
-            lines.append(f"    - {addr['NetType']}: {addr['Vip']}:{addr.get('Vport', 3306)}")
+    lines = [f"Found {len(results)} instance(s) matching Vip '{ip}':"]
+    for r in results:
+        db_type = r.get("DbType", "unknown")
+        lines.append(f"  InstanceId: {r['ClusterId']}")
+        lines.append(f"  Name: {r.get('ClusterName', 'N/A')}")
+        lines.append(f"  Vip: {r.get('Vip', 'N/A')}")
+        lines.append(f"  DbType: {db_type}")
+        if r.get("ShardCount"):
+            lines.append(f"  ShardCount: {r['ShardCount']}")
+        if r.get("Status"):
+            lines.append(f"  Status: {r['Status']}")
         lines.append("")
     return "\n".join(lines)
 

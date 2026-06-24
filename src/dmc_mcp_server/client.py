@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -8,6 +9,10 @@ from typing import Optional
 import httpx
 
 from .crypto import encrypt_password
+
+for _k in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
+    os.environ.pop(_k, None)
+os.environ.setdefault("NO_PROXY", "*")
 
 DMC_BASE = "https://dms.cloud.tencent.com"
 SESSION_TOKEN_TTL = 7200

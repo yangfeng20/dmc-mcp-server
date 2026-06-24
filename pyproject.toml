@@ -1,7 +1,7 @@
 [project]
 name = "dmc-mcp-server"
-version = "0.1.0"
-description = "Tencent Cloud DMC (Data Management Console) MCP Server - Execute SQL on TDSQL-C via browser cookies"
+version = "0.2.0"
+description = "Tencent Cloud DMC MCP Server - Execute SQL on TDSQL-C / TDSQL via browser cookies"
 authors = [
     { name = "dmc-mcp-server contributors" },
 ]

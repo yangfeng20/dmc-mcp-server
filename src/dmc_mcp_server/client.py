@@ -10,7 +10,6 @@ import httpx
 from .crypto import encrypt_password
 
 DMC_BASE = "https://dms.cloud.tencent.com"
-MC_GTK = 1625965900
 SESSION_TOKEN_TTL = 7200
 
 
@@ -50,8 +49,9 @@ class SessionExpiredError(Exception):
 
 
 class DMCClient:
-    def __init__(self, cookie: str):
+    def __init__(self, cookie: str, mc_gtk: int = 0):
         self._cookie = cookie
+        self._mc_gtk = mc_gtk
         self._sessions: dict[str, InstanceSession] = {}
         self._creds_registry: dict[str, InstanceCredentials] = {}
         self._http = httpx.Client(trust_env=False, timeout=60)
@@ -72,8 +72,10 @@ class DMCClient:
             "X-Sequence-ID": rid,
         }
 
-    def update_cookie(self, cookie: str):
+    def update_cookie(self, cookie: str, mc_gtk: int = 0):
         self._cookie = cookie
+        if mc_gtk:
+            self._mc_gtk = mc_gtk
 
     def ensure_login(
         self,
@@ -112,7 +114,7 @@ class DMCClient:
             "uInstanceId": creds.instance_id,
             "password": encrypt_password(creds.password),
             "user": creds.user,
-            "mc_gtk": MC_GTK,
+            "mc_gtk": self._mc_gtk,
             "token": "",
             "db_type": "",
             "globalCharset": None,
@@ -144,7 +146,7 @@ class DMCClient:
             "dbName": "information_schema",
             "pageSize": 1,
             "isGettingCount": 0,
-            "mc_gtk": MC_GTK,
+            "mc_gtk": self._mc_gtk,
             "token": session.token,
             "db_type": session.db_type,
             "dbType": session.db_type,
@@ -217,7 +219,7 @@ class DMCClient:
             "dbName": db_name,
             "pageSize": page_size,
             "isGettingCount": is_getting_count,
-            "mc_gtk": MC_GTK,
+            "mc_gtk": self._mc_gtk,
             "token": session.token,
             "db_type": session.db_type,
             "dbType": session.db_type,

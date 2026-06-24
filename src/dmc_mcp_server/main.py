@@ -23,7 +23,7 @@ def _get_client() -> DMCClient:
                 "No cookie configured. Use the 'set_cookie' tool first, "
                 "or set the DMC_COOKIE environment variable."
             )
-        _client = DMCClient(cookie=_cookie_mgr.cookie)
+        _client = DMCClient(cookie=_cookie_mgr.cookie, mc_gtk=_cookie_mgr.mc_gtk)
     return _client
 
 
@@ -66,22 +66,31 @@ def _validate_select_only(sql: str) -> str:
 # ============================================================
 
 @mcp.tool()
-def set_cookie(cookie: str) -> str:
+def set_cookie(cookie: str, mc_gtk: int = 0) -> str:
     """
     Set or update the Tencent Cloud console cookie.
     AI can obtain this from the browser via Chrome DevTools MCP:
       document.cookie
     Then pass the full cookie string here.
 
+    The mc_gtk (csrfCode) value is required for cluster search (DescribeClusters API).
+    AI can extract it from the browser's performance API:
+      performance.getEntriesByType('resource')
+        .find(e => e.name.includes('csrfCode='))
+        ?.name.match(/csrfCode=(\\d+)/)?.[1]
+    If not provided, DMC login/SQL tools will still work (they don't require mc_gtk
+    to be valid), but find_instance_by_ip will fail.
+
     Args:
         cookie: Full cookie string from the Tencent Cloud console browser tab.
+        mc_gtk: Optional csrfCode value from the browser. Required for cluster search.
     """
-    _cookie_mgr.set_cookie(cookie)
+    _cookie_mgr.set_cookie(cookie, mc_gtk)
     global _client
     if _client is not None:
-        _client.update_cookie(_cookie_mgr.cookie)
+        _client.update_cookie(_cookie_mgr.cookie, _cookie_mgr.mc_gtk)
     else:
-        _client = DMCClient(cookie=_cookie_mgr.cookie)
+        _client = DMCClient(cookie=_cookie_mgr.cookie, mc_gtk=_cookie_mgr.mc_gtk)
     return "Cookie updated successfully. All active sessions will use the new cookie."
 
 
@@ -316,7 +325,8 @@ def find_instance_by_ip(ip: str) -> str:
         return "Cluster search module not available."
 
     cookie = _cookie_mgr.cookie
-    results = search_cluster_by_ip(cookie, ip)
+    mc_gtk = _cookie_mgr.mc_gtk
+    results = search_cluster_by_ip(cookie, ip, mc_gtk=mc_gtk)
     if not results:
         return f"No cluster found with Vip '{ip}'."
 
@@ -333,6 +343,7 @@ def find_instance_by_ip(ip: str) -> str:
 
 def main():
     _cookie_mgr.load_from_env()
+    _cookie_mgr.load_mc_gtk_from_env()
     mcp.run()
 
 

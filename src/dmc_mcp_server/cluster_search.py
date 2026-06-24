@@ -3,12 +3,13 @@ from __future__ import annotations
 import httpx
 
 CLUSTER_API = "https://cynosdb.cloud.tencent.com/api/cloud3/cynosdb/DescribeClusters"
-MC_GTK = 1625965900
 DEFAULT_REGION = "ap-shanghai"
 DEFAULT_LIMIT = 100
 
 
-def search_cluster_by_ip(cookie: str, ip: str, region: str = DEFAULT_REGION) -> list[dict]:
+def search_cluster_by_ip(
+    cookie: str, ip: str, mc_gtk: int = 0, region: str = DEFAULT_REGION
+) -> list[dict]:
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -35,8 +36,9 @@ def search_cluster_by_ip(cookie: str, ip: str, region: str = DEFAULT_REGION) -> 
             }
         ],
         "Region": region,
-        "mc_gtk": MC_GTK,
     }
+    if mc_gtk:
+        body["mc_gtk"] = mc_gtk
 
     with httpx.Client(trust_env=False, timeout=15) as client:
         resp = client.post(CLUSTER_API, json=body, headers=headers)

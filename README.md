@@ -39,27 +39,26 @@ uv run dmc-mcp-server
 
 ## 配置
 
-### 在 opencode.jsonc 中添加
+### 在 MCP 客户端中添加
 
-```jsonc
+在你的 MCP 客户端配置中添加 (如 `opencode.jsonc`, `claude_desktop_config.json`):
+
+```json
 {
-  "mcp": {
+  "mcpServers": {
     "dmc-mcp-server": {
-      "type": "stdio",
       "command": "uvx",
-      "args": ["dmc-mcp-server"],
-      "env": {
-        "DMC_COOKIE": "<从浏览器复制的腾讯云控制台Cookie>",
-        "DMC_MC_GTK": "<csrfCode, 可选, 用于实例搜索>"
-      }
+      "args": ["dmc-mcp-server"]
     }
   }
 }
 ```
 
+> Cookie 不写在配置中, 启动后通过 `set_cookie` 工具动态设置.
+
 ### Cookie 获取方式
 
-AI 可通过 Chrome DevTools MCP 自动获取：
+启动 MCP 后, 通过 Chrome DevTools MCP 在腾讯云控制台页面自动获取:
 
 ```javascript
 // Cookie
@@ -71,7 +70,9 @@ performance.getEntriesByType('resource')
   ?.name.match(/csrfCode=(\d+)/)?.[1]
 ```
 
-也可运行时通过 `set_cookie` 工具动态更新。
+然后调用 `set_cookie(cookie, mc_gtk)` 工具设置.
+
+> 也可手动从浏览器 DevTools 复制 `document.cookie` 的值, 但 mc_gtk 必须从 performance API 提取.
 
 ## 工具列表
 

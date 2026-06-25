@@ -16,7 +16,7 @@ DMC MCP Server
     │  ③ POST dms.cloud.tencent.com/api/mysql/dbLogin → token
     │  ④ POST dms.cloud.tencent.com/api/mysql/schemaAdmin/commonSql → 查询结果
     ▼
-TDSQL-C / TDSQL MySQL (内网 10.0.x)
+TDSQL-C / TDSQL MySQL (内网 IP)
 ```
 
 利用腾讯云 DMC 控制台的 Web API，通过浏览器 Cookie 复用登录态，实现从本地对生产内网数据库的 SQL 查询。

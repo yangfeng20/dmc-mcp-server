@@ -312,13 +312,13 @@ def find_instance_by_ip(ip: str) -> str:
     Searches both TDSQL-C (CynosDB) and TDSQL (DCDB) instances.
 
     Typical workflow:
-      1. Read the JDBC URL from your-config.properties (e.g. 10.0.0.2:3306)
-      2. Call find_instance_by_ip("10.0.0.2") to get the InstanceId
+      1. Read the JDBC URL from your config file (e.g. 10.0.0.1:3306)
+      2. Call find_instance_by_ip("10.0.0.1") to get the InstanceId
       3. Call login_instance with the InstanceId (use the DbType from results)
       4. Call execute_select
 
     Args:
-        ip: Internal Vip address, e.g. "10.0.0.2"
+        ip: Internal Vip address, e.g. "10.0.0.1"
 
     Returns:
         Matching instance info (InstanceId, Name, Vip, DbType) or "not found".

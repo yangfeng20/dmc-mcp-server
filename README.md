@@ -95,6 +95,30 @@ performance.getEntriesByType('resource')
 
 `find_instance_by_ip` 会同时搜索两种类型，返回结果中包含 `DbType` 字段供 `login_instance` 使用。
 
+## 地域 (Region)
+
+`login_instance` 的 `region_id` 参数和 `find_instance_by_ip` 的 `region` 参数用于指定集群所在地域。
+
+**默认值**: `region_id=4` / `region="ap-shanghai"` (上海)
+
+如果你的集群在其他地域，需要传入对应的值:
+
+| 地域 | region_id | region (API 参数) |
+|------|-----------|------------------|
+| 北京 | 1 | `ap-beijing` |
+| 上海 | 4 | `ap-shanghai` |
+| 广州 | 7 | `ap-guangzhou` |
+| 深圳 | 11 | `ap-shenzhen` |
+| 成都 | 16 | `ap-chengdu` |
+| 重庆 | 23 | `ap-chongqing` |
+| 南京 | 45 | `ap-nanjing` |
+| 香港 | 21 | `ap-hongkong` |
+| 新加坡 | 15 | `ap-singapore` |
+| 硅谷 | 13 | `na-siliconvalley` |
+| 法兰克福 | 17 | `eu-frankfurt` |
+
+> 完整列表见 [腾讯云地域文档](https://cloud.tencent.com/document/product/213/6091)
+
 ## 特性
 
 - **双类型支持**：同时支持 TDSQL-C (CynosDB) 和 TDSQL (DCDB) 实例

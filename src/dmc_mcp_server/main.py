@@ -306,19 +306,21 @@ def list_active_sessions() -> str:
 
 
 @mcp.tool()
-def find_instance_by_ip(ip: str) -> str:
+def find_instance_by_ip(ip: str, region: str = "ap-shanghai") -> str:
     """
     Find a database instance by its internal Vip (proxy IP).
     Searches both TDSQL-C (CynosDB) and TDSQL (DCDB) instances.
 
     Typical workflow:
       1. Read the JDBC URL from your config file (e.g. 10.0.0.1:3306)
-      2. Call find_instance_by_ip("10.0.0.1") to get the InstanceId
-      3. Call login_instance with the InstanceId (use the DbType from results)
+      2. Call find_instance_by_ip("10.0.0.1", region="ap-guangzhou") to get the InstanceId
+      3. Call login_instance with the InstanceId (use the DbType from results, and match region_id)
       4. Call execute_select
 
     Args:
         ip: Internal Vip address, e.g. "10.0.0.1"
+        region: Tencent Cloud region string, e.g. "ap-shanghai" (default), "ap-beijing", "ap-guangzhou".
+                Must match the region where your cluster is deployed.
 
     Returns:
         Matching instance info (InstanceId, Name, Vip, DbType) or "not found".
@@ -330,7 +332,7 @@ def find_instance_by_ip(ip: str) -> str:
 
     cookie = _cookie_mgr.cookie
     mc_gtk = _cookie_mgr.mc_gtk
-    results = search_all_by_ip(cookie, ip, mc_gtk=mc_gtk)
+    results = search_all_by_ip(cookie, ip, mc_gtk=mc_gtk, region=region)
     if not results:
         return f"No instance found with Vip '{ip}' in either TDSQL-C or TDSQL."
 

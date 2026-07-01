@@ -295,7 +295,8 @@ class DMCClient:
         return result.get("items", [])
 
     def get_table_detail(
-        self, instance_id: str, db_name: str, table_name: str
+        self, instance_id: str, db_name: str, table_name: str,
+        include_ddl: bool = False,
     ) -> dict:
         safe_db = db_name.replace("'", "''")
         safe_table = table_name.replace("'", "''")
@@ -312,14 +313,16 @@ class DMCClient:
         )
         columns = result.get("items", [])
 
-        ddl_result = self.execute_sql(
-            instance_id,
-            f"SHOW CREATE TABLE `{safe_db}`.`{safe_table}`",
-            db_name=db_name,
-            page_size=1,
-        )
-        ddl_items = ddl_result.get("items", [])
-        ddl = ddl_items[0].get("Create Table", "") if ddl_items else ""
+        ddl = ""
+        if include_ddl:
+            ddl_result = self.execute_sql(
+                instance_id,
+                f"SHOW CREATE TABLE `{safe_db}`.`{safe_table}`",
+                db_name=db_name,
+                page_size=1,
+            )
+            ddl_items = ddl_result.get("items", [])
+            ddl = ddl_items[0].get("Create Table", "") if ddl_items else ""
 
         return {"columns": columns, "ddl": ddl}
 

@@ -171,18 +171,16 @@ def execute_select(
     if not items:
         return f"Query executed successfully. 0 rows returned. Time: {data.get('timeCost', '?')}ms"
 
+    max_col_name_len = max(len(c) for c in col_names)
     lines = []
-    lines.append(f"{' | '.join(col_names)}")
-    lines.append("-" * min(120, len(lines[0])))
+    lines.append(" | ".join(col_names))
+    lines.append("-" * min(200, max_col_name_len * len(col_names)))
     for row in items:
         vals = []
         for col_name in col_names:
             val = row.get(col_name, "")
-            s = str(val)
-            if len(s) > 50:
-                s = s[:47] + "..."
-            vals.append(s)
-        lines.append(f"{' | '.join(vals)}")
+            vals.append(str(val))
+        lines.append(" | ".join(vals))
 
     lines.append(f"\n{len(items)} rows. Time: {data.get('timeCost', '?')}ms")
     return "\n".join(lines)
@@ -248,17 +246,21 @@ def get_table_detail(
     instance_id: str,
     db_name: str,
     table_name: str,
+    include_ddl: bool = False,
 ) -> str:
     """
-    Get detailed schema of a table: columns and DDL (CREATE TABLE statement).
+    Get detailed schema of a table: columns and optionally DDL (CREATE TABLE statement).
 
     Args:
         instance_id: Instance ID (must be logged in)
         db_name: Database name
         table_name: Table name
+        include_ddl: If True, also return the CREATE TABLE DDL. Default False
+                     (columns only) to save context. Set True when you need exact
+                     column definitions, index definitions, or charset info.
 
     Returns:
-        Column details and CREATE TABLE DDL.
+        Column details (and CREATE TABLE DDL if include_ddl=True).
     """
     client = _get_client()
     detail = client.get_table_detail(instance_id, db_name, table_name)
@@ -280,7 +282,8 @@ def get_table_detail(
             f"{name:30s} {col_type:20s} {nullable:6s} {key:6s} {default:15s} {comment}"
         )
 
-    lines.append(f"\n--- DDL ---\n{detail['ddl']}")
+    if include_ddl:
+        lines.append(f"\n--- DDL ---\n{detail['ddl']}")
 
     return "\n".join(lines)
 

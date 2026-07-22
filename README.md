@@ -82,10 +82,61 @@ performance.getEntriesByType('resource')
 | `find_instance_by_ip` | 通过内网 IP 搜索数据库实例（同时搜 TDSQL-C 和 TDSQL） |
 | `login_instance` | 登录数据库实例（会话缓存，不重复登录） |
 | `execute_select` | 执行 SELECT 查询（仅允许 SELECT） |
+| `execute_dml` | 执行 DML 语句（INSERT/UPDATE/DELETE/REPLACE，需二次确认） |
 | `list_databases` | 列出实例上的所有数据库 |
 | `list_tables` | 列出指定库的表（支持模糊搜索） |
 | `get_table_detail` | 查看表结构（列信息 + DDL） |
 | `list_active_sessions` | 查看已登录的实例列表 |
+
+## DML 执行
+
+`execute_dml` 工具用于在生产环境执行 DML 语句（INSERT/UPDATE/DELETE/REPLACE），采用两步确认流程和硬编码安全校验。
+
+> ⚠️ **高风险工具**：此工具会修改数据且不可回滚。AI agent 必须先以 `confirm=False` 预览，等用户明确说「确认」「执行」后，才能以 `confirm=True` 调用。
+
+### 使用流程
+
+```python
+# 第一步: 预览 (confirm=False, 默认)
+# 校验 SQL 但不执行, 返回预览信息
+result = execute_dml(
+    instance_id="cynosdbmysql-xxx",
+    sql="UPDATE voip_caller_account SET shelf_status = 2 WHERE caller_account_id = 8277220",
+    db_name="byrobot-prod",
+    confirm=False,
+)
+# 返回: "Validation passed. Call again with confirm=True to execute: ..."
+
+# 第二步: 确认执行 (confirm=True)
+# 必须等用户明确确认后才调用
+result = execute_dml(
+    instance_id="cynosdbmysql-xxx",
+    sql="UPDATE voip_caller_account SET shelf_status = 2 WHERE caller_account_id = 8277220",
+    db_name="byrobot-prod",
+    confirm=True,
+)
+# 返回: "DML executed successfully. Affected rows: 1 ..."
+```
+
+### 安全机制
+
+以下校验硬编码在 `_validate_dml` 函数中，不可配置：
+
+1. **语句类型限制**：仅允许 INSERT/UPDATE/DELETE/REPLACE，拒绝 SELECT/DDL/其他
+2. **多语句拦截**：禁止分号分隔的多语句（防 SQL 注入式攻击）
+3. **WHERE 强制**：UPDATE/DELETE 必须包含 WHERE 子句（防全表误更新/误删）
+4. **二次确认**：必须显式传 `confirm=True` 才真正执行，默认 `confirm=False` 仅返回预览
+
+### AI Agent 使用约束
+
+工具 docstring 中明确要求 AI agent 遵守以下规则：
+
+- **禁止**：未获用户明确确认就调用 `confirm=True`
+- **必须**：先以 `confirm=False` 预览，向用户展示 SQL 和影响范围
+- **必须**：等待用户明确说「确认」「执行」「confirm」等词汇后，才执行
+- **建议**：未确认时返回预览结果并主动询问用户是否确认执行
+
+无需任何环境变量配置，开箱即用。
 
 ## 支持的数据库类型
 
@@ -123,7 +174,8 @@ performance.getEntriesByType('resource')
 ## 特性
 
 - **双类型支持**：同时支持 TDSQL-C (CynosDB) 和 TDSQL (DCDB) 实例
-- **仅 SELECT**：SQL 执行层强制限制只允许 SELECT 语句
+- **SELECT 安全**：`execute_select` 强制限制只允许 SELECT 语句
+- **DML 二次确认**：`execute_dml` 支持受控执行 INSERT/UPDATE/DELETE/REPLACE，带 WHERE 强制和多语句拦截
 - **会话复用**：登录过的实例自动缓存 token，不重复登录
 - **自动重连**：token 过期时自动重新登录（使用缓存的凭据）
 - **Cookie 动态更新**：运行时通过工具更新，无需重启 Server
@@ -132,7 +184,8 @@ performance.getEntriesByType('resource')
 ## 约束
 
 - Cookie 有效期约 2 小时（腾讯云控制台标准），过期需重新获取
-- SQL 仅支持 SELECT（WITH...SELECT 也允许）
+- `execute_select` 仅支持 SELECT（WITH...SELECT 也允许）
+- `execute_dml` 仅支持 DML（INSERT/UPDATE/DELETE/REPLACE），带硬编码安全校验
 - DB 权限取决于 DB 账号本身的 GRANT 权限
 - TDSQL 需要数据库账号已对 DMC 服务器 IP 段授权（否则登录报 ACCESS_DENIED）
 

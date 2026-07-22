@@ -61,6 +61,53 @@ def _validate_select_only(sql: str) -> str:
     return stripped
 
 
+_DML_OPERATIONS = frozenset({"insert", "update", "delete", "replace"})
+
+
+def _validate_dml(sql: str) -> str:
+    """Validate a DML statement (INSERT/UPDATE/DELETE/REPLACE).
+
+    Security checks (hardcoded, no config):
+      1. Statement type must be DML
+      2. No multi-statement (no semicolon inside)
+      3. UPDATE/DELETE must have WHERE clause
+
+    Args:
+        sql: Raw SQL string from user.
+
+    Returns:
+        Cleaned SQL string (stripped, trailing semicolon removed).
+
+    Raises:
+        ValueError: If any check fails.
+    """
+    stripped = sql.strip().rstrip(";").strip()
+    if not stripped:
+        raise ValueError("SQL cannot be empty")
+
+    tokens = stripped.split()
+    first_word = tokens[0].lower() if tokens else ""
+
+    if first_word not in _DML_OPERATIONS:
+        raise ValueError(
+            f"Only DML operations (INSERT/UPDATE/DELETE/REPLACE) are allowed. "
+            f"Detected '{first_word.upper()}'."
+        )
+
+    if ";" in stripped:
+        raise ValueError(
+            "Multi-statement SQL is forbidden (detected semicolon)."
+        )
+
+    if first_word in ("update", "delete"):
+        if not re.search(r"\bWHERE\b", stripped, re.IGNORECASE):
+            raise ValueError(
+                f"{first_word.upper()} statement must include a WHERE clause."
+            )
+
+    return stripped
+
+
 # ============================================================
 # MCP Tools
 # ============================================================
@@ -187,6 +234,81 @@ def execute_select(
 
 
 @mcp.tool()
+def execute_dml(
+    instance_id: str,
+    sql: str,
+    db_name: str,
+    confirm: bool = False,
+) -> str:
+    """
+    ⚠️ HIGH-RISK TOOL: Execute a DML statement (INSERT/UPDATE/DELETE/REPLACE)
+    on a database instance. This tool modifies data and is irreversible.
+
+    AI AGENT RULES (MANDATORY):
+      - NEVER call this tool with confirm=True without explicit user approval.
+      - ALWAYS call with confirm=False first to show the user the preview.
+      - Wait for the user to explicitly say "confirm" / "确认" / "执行" before
+        calling again with confirm=True.
+      - If the user has not explicitly confirmed, return the preview result and
+        ask the user to confirm.
+
+    Two-step confirmation flow:
+      1. confirm=False (default): validate the SQL and return a preview.
+         The SQL is NOT executed. Safe to call.
+      2. confirm=True: EXECUTES the SQL. Only call this after the user has
+         explicitly confirmed.
+
+    Security checks (hardcoded, no config):
+      - Statement must be DML (INSERT/UPDATE/DELETE/REPLACE)
+      - No multi-statement (semicolon inside SQL is forbidden)
+      - UPDATE/DELETE must include a WHERE clause
+
+    Args:
+        instance_id: Instance ID (must be logged in via login_instance first)
+        sql: DML statement to execute
+        db_name: Target database name within the instance
+        confirm: Set to True to actually execute. Default False (preview only).
+                 MUST be True only after explicit user confirmation.
+
+    Returns:
+        confirm=False: validation result + preview of the SQL.
+        confirm=True: execution result with affected rows count.
+    """
+    cleaned_sql = _validate_dml(sql)
+
+    if not confirm:
+        return (
+            f"Validation passed. Call again with confirm=True to execute:\n"
+            f"{cleaned_sql}"
+        )
+
+    client = _get_client()
+    data = client.execute_sql(
+        instance_id=instance_id,
+        sql=cleaned_sql,
+        db_name=db_name,
+        page_size=1,
+    )
+
+    items = data.get("items", {})
+    if isinstance(items, dict):
+        affected_rows = items.get("affectedRows", "N/A")
+        info = items.get("info", "")
+    else:
+        affected_rows = "N/A"
+        info = ""
+
+    lines = [
+        "DML executed successfully.",
+        f"Affected rows: {affected_rows}",
+    ]
+    if info:
+        lines.append(f"Info: {info}")
+    lines.append(f"Time: {data.get('timeCost', '?')}ms")
+    return "\n".join(lines)
+
+
+@mcp.tool()
 def list_databases(instance_id: str) -> str:
     """
     List all databases accessible by the current logged-in account
@@ -263,7 +385,7 @@ def get_table_detail(
         Column details (and CREATE TABLE DDL if include_ddl=True).
     """
     client = _get_client()
-    detail = client.get_table_detail(instance_id, db_name, table_name)
+    detail = client.get_table_detail(instance_id, db_name, table_name, include_ddl=include_ddl)
 
     columns = detail["columns"]
     lines = [f"Table: {db_name}.{table_name} ({len(columns)} columns)\n"]

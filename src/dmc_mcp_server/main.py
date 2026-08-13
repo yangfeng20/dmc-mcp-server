@@ -61,14 +61,17 @@ def _validate_select_only(sql: str) -> str:
     return stripped
 
 
-_DML_OPERATIONS = frozenset({"insert", "update", "delete", "replace"})
+_WRITE_OPERATIONS = frozenset({
+    "insert", "update", "delete", "replace",
+    "alter", "create", "drop", "truncate", "rename",
+})
 
 
-def _validate_dml(sql: str) -> str:
-    """Validate a DML statement (INSERT/UPDATE/DELETE/REPLACE).
+def _validate_write_sql(sql: str) -> str:
+    """Validate a single DML or DDL write statement.
 
     Security checks (hardcoded, no config):
-      1. Statement type must be DML
+      1. Statement type must be DML or DDL
       2. No multi-statement (no semicolon inside)
       3. UPDATE/DELETE must have WHERE clause
 
@@ -88,9 +91,9 @@ def _validate_dml(sql: str) -> str:
     tokens = stripped.split()
     first_word = tokens[0].lower() if tokens else ""
 
-    if first_word not in _DML_OPERATIONS:
+    if first_word not in _WRITE_OPERATIONS:
         raise ValueError(
-            f"Only DML operations (INSERT/UPDATE/DELETE/REPLACE) are allowed. "
+            f"Only write operations (INSERT/UPDATE/DELETE/REPLACE/ALTER/CREATE/DROP/TRUNCATE/RENAME) are allowed. "
             f"Detected '{first_word.upper()}'."
         )
 
@@ -241,7 +244,7 @@ def execute_dml(
     confirm: bool = False,
 ) -> str:
     """
-    ⚠️ HIGH-RISK TOOL: Execute a DML statement (INSERT/UPDATE/DELETE/REPLACE)
+    ⚠️ HIGH-RISK TOOL: Execute a DML or DDL write statement
     on a database instance. This tool modifies data and is irreversible.
 
     AI AGENT RULES (MANDATORY):
@@ -259,7 +262,7 @@ def execute_dml(
          explicitly confirmed.
 
     Security checks (hardcoded, no config):
-      - Statement must be DML (INSERT/UPDATE/DELETE/REPLACE)
+      - Statement must be DML or DDL
       - No multi-statement (semicolon inside SQL is forbidden)
       - UPDATE/DELETE must include a WHERE clause
 
@@ -274,7 +277,7 @@ def execute_dml(
         confirm=False: validation result + preview of the SQL.
         confirm=True: execution result with affected rows count.
     """
-    cleaned_sql = _validate_dml(sql)
+    cleaned_sql = _validate_write_sql(sql)
 
     if not confirm:
         return (
@@ -299,7 +302,7 @@ def execute_dml(
         info = ""
 
     lines = [
-        "DML executed successfully.",
+        "SQL executed successfully.",
         f"Affected rows: {affected_rows}",
     ]
     if info:

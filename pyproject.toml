@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dmc-mcp-server"
-version = "0.3.0"
+version = "0.4.0"
 description = "Tencent Cloud DMC MCP Server - Execute SQL on TDSQL-C / TDSQL via browser cookies"
 readme = "README.md"
 license = "MIT"

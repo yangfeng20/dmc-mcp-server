@@ -4,11 +4,13 @@ import os
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import httpx
 
 from .crypto import encrypt_password
+from .storage import CredentialStore
 
 for _k in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
     os.environ.pop(_k, None)
@@ -54,12 +56,23 @@ class SessionExpiredError(Exception):
 
 
 class DMCClient:
-    def __init__(self, cookie: str, mc_gtk: int = 0):
+    def __init__(
+        self,
+        cookie: str,
+        mc_gtk: int = 0,
+        base_dir: Path | None = None,
+    ):
         self._cookie = cookie
         self._mc_gtk = mc_gtk
         self._sessions: dict[str, InstanceSession] = {}
         self._creds_registry: dict[str, InstanceCredentials] = {}
         self._http = httpx.Client(trust_env=False, timeout=60)
+        self._cred_store = CredentialStore(base_dir)
+        self._account_key: str | None = None
+
+    def set_account_key(self, key: str | None) -> None:
+        """Bind subsequent credential lookups to an account+region key."""
+        self._account_key = key
 
     def _headers(self, request_id: str | None = None) -> dict:
         rid = request_id or str(uuid.uuid4())
@@ -99,6 +112,14 @@ class DMCClient:
         )
         self._creds_registry[instance_id] = creds
 
+        # If no explicit password was provided, try the credential store.
+        if not password and self._account_key:
+            saved = self._cred_store.get(self._account_key, instance_id)
+            if saved:
+                creds.password = saved["password"]
+                if not user:
+                    creds.user = saved["user"]
+
         session = self._sessions.get(instance_id)
         if session and not session.is_expired():
             if self._ping(session):
@@ -137,6 +158,22 @@ class DMCClient:
         token = data["data"]["token"]
         session = InstanceSession(credentials=creds, token=token)
         self._sessions[creds.instance_id] = session
+
+        # Persist the password for future reuse under the active account key.
+        if self._account_key:
+            try:
+                self._cred_store.save(
+                    self._account_key,
+                    instance_id=creds.instance_id,
+                    user=creds.user,
+                    password=creds.password,
+                    db_type=creds.db_type,
+                    region_id=creds.region_id,
+                )
+            except Exception:
+                # Persisting creds is best-effort; never break login for it.
+                pass
+
         return session
 
     def _ping(self, session: InstanceSession) -> bool:

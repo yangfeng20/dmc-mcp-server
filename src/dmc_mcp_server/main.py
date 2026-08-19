@@ -23,8 +23,23 @@ def _get_client() -> DMCClient:
                 "No cookie configured. Use the 'set_cookie' tool first, "
                 "or set the DMC_COOKIE environment variable."
             )
-        _client = DMCClient(cookie=_cookie_mgr.cookie, mc_gtk=_cookie_mgr.mc_gtk)
+        _client = DMCClient(
+            cookie=_cookie_mgr.cookie,
+            mc_gtk=_cookie_mgr.mc_gtk,
+        )
+        _client.set_account_key(_cookie_mgr.active_key)
     return _client
+
+
+def _set_client_cookie(cookie: str, mc_gtk: int = 0) -> None:
+    """Create or update the shared DMCClient with a specific cookie."""
+    global _client
+    if _client is not None:
+        _client.update_cookie(cookie, mc_gtk)
+        _client.set_account_key(_cookie_mgr.active_key)
+    else:
+        _client = DMCClient(cookie=cookie, mc_gtk=mc_gtk)
+        _client.set_account_key(_cookie_mgr.active_key)
 
 
 def _validate_select_only(sql: str) -> str:
@@ -123,6 +138,13 @@ def set_cookie(cookie: str, mc_gtk: int = 0) -> str:
       document.cookie
     Then pass the full cookie string here.
 
+    The cookie is PERSISTED to disk (~/.dmc-mcp-server/cookie/), keyed by
+    account uin + region_id parsed from the cookie itself. This means:
+      - Once set, future sessions / agents reuse it without re-setting.
+      - Shanghai (region_id=4) and Singapore (region_id=9) cookies are stored
+        separately and never mixed.
+    Use list_cookies to see what is stored, and clear_cookies to remove.
+
     The mc_gtk (csrfCode) value is required for cluster search (DescribeClusters API).
     AI can extract it from the browser's performance API:
       performance.getEntriesByType('resource')
@@ -135,20 +157,65 @@ def set_cookie(cookie: str, mc_gtk: int = 0) -> str:
         cookie: Full cookie string from the Tencent Cloud console browser tab.
         mc_gtk: Optional csrfCode value from the browser. Required for cluster search.
     """
-    _cookie_mgr.set_cookie(cookie, mc_gtk)
-    global _client
-    if _client is not None:
-        _client.update_cookie(_cookie_mgr.cookie, _cookie_mgr.mc_gtk)
-    else:
-        _client = DMCClient(cookie=_cookie_mgr.cookie, mc_gtk=_cookie_mgr.mc_gtk)
-    return "Cookie updated successfully. All active sessions will use the new cookie."
+    msg = _cookie_mgr.set_cookie(cookie, mc_gtk)
+    _set_client_cookie(_cookie_mgr.cookie, _cookie_mgr.mc_gtk)
+    return msg
+
+
+@mcp.tool()
+def list_cookies() -> str:
+    """
+    List all persisted Tencent Cloud console cookies (account + region).
+    Useful to see which environments are ready (e.g. Shanghai vs Singapore)
+    and whether any stored cookie has exceeded the ~2h lifetime (likely expired).
+
+    Returns:
+        A table of stored cookies: key, uin, region_id, age, expired flag.
+    """
+    rows = _cookie_mgr.list_stored()
+    if not rows:
+        return (
+            "No persisted cookies. Use set_cookie with a cookie from the "
+            "Tencent Cloud console to persist one."
+        )
+
+    lines = [f"Stored cookies ({len(rows)}):"]
+    lines.append(f"{'KEY':28s} {'UIN':18s} {'REGION':>8s} {'AGE':>10s}  STATUS")
+    lines.append("-" * 90)
+    for r in rows:
+        age_m = r["age_seconds"] // 60
+        status = "EXPIRED (re-set cookie)" if r["expired"] else "ok"
+        lines.append(
+            f"{r['key']:28s} {str(r['uin']):18s} {r['region_id']:>8d} "
+            f"{age_m:>8d}m  {status}"
+        )
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def clear_cookies(region_id: int | None = None) -> str:
+    """
+    Delete a persisted cookie. If region_id is given, clears the cookie for that
+    region (e.g. 4=Shanghai, 9=Singapore); otherwise clears the active cookie.
+
+    Args:
+        region_id: Optional region to clear (4=Shanghai, 9=Singapore).
+
+    Returns:
+        Confirmation of what was removed.
+    """
+    removed = _cookie_mgr.clear_region(region_id=region_id)
+    if not removed:
+        return "Nothing to clear."
+    _set_client_cookie(_cookie_mgr.cookie, _cookie_mgr.mc_gtk)
+    return f"Cleared cookie(s): {', '.join(removed)}"
 
 
 @mcp.tool()
 def login_instance(
     instance_id: str,
-    user: str,
-    password: str,
+    user: str = "",
+    password: str = "",
     db_type: str = "cynosdbmysql",
     region_id: int = 4,
 ) -> str:
@@ -158,20 +225,31 @@ def login_instance(
     The session is cached - subsequent calls reuse the same token
     without re-login, unless the token expires.
 
+    Persisted credentials: if the same instance was logged in before under the
+    current account+region, its user/password are reused automatically, so you
+    can omit user/password on repeat logins.
+
     Use find_instance_by_ip to discover the instance_id and db_type,
     then pass the db_type value from the search results here.
 
     Args:
         instance_id: Instance ID, e.g. "cynosdbmysql-xxx" or "tdsqlshard-xxx"
-        user: Database account name, e.g. "db_user"
-        password: Database account password (plain text)
+        user: Database account name, e.g. "db_user" (optional if previously saved)
+        password: Database account password (optional if previously saved)
         db_type: Database type - "cynosdbmysql" (TDSQL-C) or "tdsql" (TDSQL)
-        region_id: Region ID, default 4 (Shanghai)
+        region_id: Region ID, 4=Shanghai (default), 9=Singapore.
 
     Returns:
         Login status message.
     """
     client = _get_client()
+
+    # Ensure the client cookie + account key match the requested region.
+    # (login may be called directly without a preceding find_instance_by_ip.)
+    region_cookie = _cookie_mgr.get_for_region(region_id=region_id)
+    if region_cookie:
+        _set_client_cookie(region_cookie, _cookie_mgr.mc_gtk)
+
     session = client.ensure_login(
         instance_id=instance_id,
         user=user,
@@ -181,7 +259,7 @@ def login_instance(
     )
     return (
         f"Login successful. Instance: {instance_id}, "
-        f"User: {user}, Token prefix: {session.token[:16]}..."
+        f"User: {session.credentials.user}, Token prefix: {session.token[:16]}..."
     )
 
 
@@ -458,8 +536,43 @@ def find_instance_by_ip(ip: str, region: str = "ap-shanghai") -> str:
     except ImportError:
         return "Cluster search module not available."
 
-    cookie = _cookie_mgr.cookie
-    mc_gtk = _cookie_mgr.mc_gtk
+    rid = CookieManager._region_alias_to_id(region)
+
+    # Auto-load the persisted cookie for the target region (environment switch).
+    # Only when the requested region differs from the active one, or none active.
+    if rid is not None:
+        region_cookie = _cookie_mgr.get_for_region(region_id=rid)
+        if region_cookie is None:
+            # No stored cookie for this region: do not silently use another one.
+            return (
+                f"No stored cookie for region '{region}'. "
+                f"Use set_cookie with a fresh cookie from the '{region}' console first. "
+                f"Check stored cookies with list_cookies."
+            )
+        _set_client_cookie(region_cookie, _cookie_mgr.mc_gtk)
+        cookie = region_cookie
+        mc_gtk = _cookie_mgr.mc_gtk
+    else:
+        cookie = _cookie_mgr.cookie
+        mc_gtk = _cookie_mgr.mc_gtk
+
+    # Warn when the stored cookie for this region may be expired.
+    if rid is not None:
+        key = _cookie_mgr.store._find_key_by_region(rid)
+        if key and _cookie_mgr.store.is_expired(key):
+            return (
+                f"⚠️ The stored cookie for region '{region}' is older than 2h and may be expired. "
+                f"Re-run set_cookie with a fresh cookie from the console before trusting results.\n\n"
+                + _run_search(cookie, mc_gtk, ip, region)
+            )
+
+    return _run_search(cookie, mc_gtk, ip, region)
+
+
+def _run_search(cookie: str, mc_gtk: int, ip: str, region: str) -> str:
+    """Shared cluster-search path used by find_instance_by_ip."""
+    from .cluster_search import search_all_by_ip
+
     results = search_all_by_ip(cookie, ip, mc_gtk=mc_gtk, region=region)
     if not results:
         return f"No instance found with Vip '{ip}' in either TDSQL-C or TDSQL."

@@ -148,6 +148,7 @@ class CookieStore:
             "uin": uin,
             "region_id": region_id,
             "set_at": int(time.time()),
+            "mc_gtk": mc_gtk,
             "source": "set_cookie",
         }
         self._save_index()
@@ -183,9 +184,19 @@ class CookieStore:
             return None
 
     def get_mc_gtk(self, key: str | None = None, region_id: int | None = None) -> int:
-        """Return the stored mc_gtk for the resolved key (0 if unknown)."""
-        # mc_gtk is not persisted per-key currently; only the in-memory active one.
-        return self._active_mc_gtk
+        """Return the stored mc_gtk for the resolved key (0 if unknown).
+
+        Prefers the in-memory active value; falls back to the persisted index
+        entry so a freshly-restarted process keeps a working csrfCode.
+        """
+        if key is None and region_id is not None:
+            key = self._find_key_by_region(region_id)
+        if key is None:
+            return self._active_mc_gtk
+        if key == self._active_key and self._active_mc_gtk:
+            return self._active_mc_gtk
+        meta = self._index.get(key)
+        return int(meta.get("mc_gtk", 0) or 0) if meta else 0
 
     def _find_key_by_region(self, region_id: int) -> str | None:
         matches = [

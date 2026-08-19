@@ -32,7 +32,7 @@ class CookieManager:
         self._restore_active_from_disk()
 
     def _restore_active_from_disk(self) -> None:
-        """Set the most recently stored cookie as the active one."""
+        """Set the most recently stored cookie (and its mc_gtk) as active."""
         rows = self._store.list()
         if not rows:
             return
@@ -42,7 +42,7 @@ class CookieManager:
         if cookie:
             self._store._active_key = key
             self._store._active_cookie = cookie
-            self._store._active_mc_gtk = 0
+            self._store._active_mc_gtk = self._store.get_mc_gtk(key=key)
 
     # ------------------------------------------------------------------
     # Environment fallback (unchanged semantics)

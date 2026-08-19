@@ -248,7 +248,10 @@ def login_instance(
     # (login may be called directly without a preceding find_instance_by_ip.)
     region_cookie = _cookie_mgr.get_for_region(region_id=region_id)
     if region_cookie:
-        _set_client_cookie(region_cookie, _cookie_mgr.mc_gtk)
+        _set_client_cookie(
+            region_cookie,
+            _cookie_mgr.store.get_mc_gtk(region_id=region_id),
+        )
 
     session = client.ensure_login(
         instance_id=instance_id,
@@ -551,7 +554,9 @@ def find_instance_by_ip(ip: str, region: str = "ap-shanghai") -> str:
             )
         _set_client_cookie(region_cookie, _cookie_mgr.mc_gtk)
         cookie = region_cookie
-        mc_gtk = _cookie_mgr.mc_gtk
+        # mc_gtk must follow the region, not the global active value (which
+        # reflects the LAST set_cookie call and may belong to another region).
+        mc_gtk = _cookie_mgr.store.get_mc_gtk(region_id=rid)
     else:
         cookie = _cookie_mgr.cookie
         mc_gtk = _cookie_mgr.mc_gtk
